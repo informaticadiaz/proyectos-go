@@ -2,6 +2,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 )
@@ -12,6 +13,9 @@ type Config struct {
 	Addr string
 	// Upstream is the base URL of the Ollama server.
 	Upstream *url.URL
+	// KeysFile is the path of the client API keys file. It is required so
+	// the gateway never starts without authentication.
+	KeysFile string
 }
 
 // Load reads the configuration through getenv (os.Getenv in production),
@@ -34,5 +38,10 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("OLLAMA_URL: %q must be an absolute http(s) URL", raw)
 	}
 
-	return Config{Addr: addr, Upstream: upstream}, nil
+	keysFile := getenv("GATEWAY_KEYS_FILE")
+	if keysFile == "" {
+		return Config{}, errors.New("GATEWAY_KEYS_FILE is required")
+	}
+
+	return Config{Addr: addr, Upstream: upstream, KeysFile: keysFile}, nil
 }

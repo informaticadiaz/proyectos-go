@@ -9,25 +9,36 @@ handle on its own.
 | Stage | Feature | State |
 | --- | --- | --- |
 | 1 | Reverse proxy for `/v1/*`, SSE streaming, health check, native API blocked | Done |
-| 2 | API key authentication | Planned |
+| 2 | API key authentication | Done |
 | 3 | Per-key rate limiting | Planned |
 | 4 | Structured request logs and metrics (latency, tokens, model) | Planned |
 
 ## Run
 
+Create a key for each client. The key is printed once; only its SHA-256
+hash goes into the keys file:
+
 ```sh
-go run ./cmd/gateway
+go run ./cmd/gateway keygen alice
+# API key (shown once, give it to the client): gw_...
+# Keys file line: alice:3f1c...
+
+echo 'alice:3f1c...' >> keys.txt
+GATEWAY_KEYS_FILE=keys.txt go run ./cmd/gateway
 ```
 
 | Variable | Default | Description |
 | --- | --- | --- |
+| `GATEWAY_KEYS_FILE` | — (required) | Keys file, one `name:sha256hex` per line; `#` comments allowed |
 | `GATEWAY_ADDR` | `127.0.0.1:8090` | Listen address |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama base URL |
 
-Any OpenAI client works by pointing its base URL at the gateway:
+Any OpenAI client works by pointing its base URL at the gateway and using
+the key as its API key:
 
 ```sh
 curl -N http://127.0.0.1:8090/v1/chat/completions \
+  -H "Authorization: Bearer $GATEWAY_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"qwen2.5-coder:7b","stream":true,"messages":[{"role":"user","content":"Hi"}]}'
 ```
@@ -39,6 +50,15 @@ curl -N http://127.0.0.1:8090/v1/chat/completions \
 - `httputil.ReverseProxy` flushes `text/event-stream` responses immediately,
   so streamed tokens are not buffered.
 - An unreachable upstream returns `502 Bad Gateway`.
+- `/v1/*` requires `Authorization: Bearer <key>`; `/healthz` stays public.
+  Rejections use the OpenAI error envelope (`invalid_api_key`), so SDKs
+  report them clearly.
+- Keys are looked up by their SHA-256 hash: the file never holds a usable
+  secret, and hashing before the map lookup avoids timing leaks.
+- The gateway refuses to start without a keys file or with an empty one.
+- The `Authorization` header is removed before forwarding, so client keys
+  never reach Ollama. The client name travels in the request context for
+  the rate-limiting and logging stages.
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown that lets in-flight
   streams finish (up to 30 s).
 

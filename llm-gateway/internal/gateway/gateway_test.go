@@ -7,11 +7,15 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/auth"
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/gateway"
 )
+
+const testKey = "gw_test"
 
 func newGateway(t *testing.T, upstream string) *httptest.Server {
 	t.Helper()
@@ -19,19 +23,37 @@ func newGateway(t *testing.T, upstream string) *httptest.Server {
 	if err != nil {
 		t.Fatalf("parse upstream: %v", err)
 	}
-	srv := httptest.NewServer(gateway.New(u))
+	keys, err := auth.ParseKeys(strings.NewReader("tester:" + auth.HashKey(testKey)))
+	if err != nil {
+		t.Fatalf("ParseKeys: %v", err)
+	}
+	srv := httptest.NewServer(gateway.New(u, keys))
 	t.Cleanup(srv.Close)
 	return srv
 }
 
-func TestHealthz(t *testing.T) {
+func do(t *testing.T, method, target, key, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, target, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, target, err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	return resp
+}
+
+func TestHealthzIsPublic(t *testing.T) {
 	gw := newGateway(t, "http://127.0.0.1:1")
 
-	resp, err := http.Get(gw.URL + "/healthz")
-	if err != nil {
-		t.Fatalf("GET /healthz: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := do(t, http.MethodGet, gw.URL+"/healthz", "", "")
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
@@ -39,21 +61,18 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestProxiesOpenAIRoutes(t *testing.T) {
-	var gotMethod, gotPath, gotBody string
+	var gotMethod, gotPath, gotBody, gotAuth string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		gotMethod, gotPath, gotBody = r.Method, r.URL.Path, string(body)
+		gotAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"id":"chatcmpl-1"}`)
 	}))
 	t.Cleanup(upstream.Close)
 	gw := newGateway(t, upstream.URL)
 
-	resp, err := http.Post(gw.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"m"}`))
-	if err != nil {
-		t.Fatalf("POST: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", testKey, `{"model":"m"}`)
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
@@ -62,8 +81,30 @@ func TestProxiesOpenAIRoutes(t *testing.T) {
 	if gotMethod != http.MethodPost || gotPath != "/v1/chat/completions" || gotBody != `{"model":"m"}` {
 		t.Errorf("upstream got %s %s %q", gotMethod, gotPath, gotBody)
 	}
+	if gotAuth != "" {
+		t.Errorf("client API key leaked upstream: %q", gotAuth)
+	}
 	if string(body) != `{"id":"chatcmpl-1"}` {
 		t.Errorf("body = %q", body)
+	}
+}
+
+func TestRejectsRequestsWithoutValidKey(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	}))
+	t.Cleanup(upstream.Close)
+	gw := newGateway(t, upstream.URL)
+
+	for _, key := range []string{"", "gw_wrong"} {
+		resp := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", key, `{}`)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("key %q: status = %d, want %d", key, resp.StatusCode, http.StatusUnauthorized)
+		}
+	}
+	if n := calls.Load(); n != 0 {
+		t.Errorf("upstream called %d times", n)
 	}
 }
 
@@ -80,11 +121,7 @@ func TestStreamsChunksWithoutBuffering(t *testing.T) {
 	t.Cleanup(func() { close(release) })
 	gw := newGateway(t, upstream.URL)
 
-	resp, err := http.Post(gw.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"stream":true}`))
-	if err != nil {
-		t.Fatalf("POST: %v", err)
-	}
-	defer resp.Body.Close()
+	resp := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", testKey, `{"stream":true}`)
 
 	line := make(chan string, 1)
 	go func() {
@@ -103,26 +140,22 @@ func TestStreamsChunksWithoutBuffering(t *testing.T) {
 }
 
 func TestBlocksNonOpenAIRoutes(t *testing.T) {
-	called := false
+	var calls atomic.Int32
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
+		calls.Add(1)
 	}))
 	t.Cleanup(upstream.Close)
 	gw := newGateway(t, upstream.URL)
 
-	// Ollama's native API can pull and delete models; it must never be exposed.
-	req, _ := http.NewRequest(http.MethodDelete, gw.URL+"/api/delete", nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("DELETE: %v", err)
-	}
-	resp.Body.Close()
+	// Ollama's native API can pull and delete models; it must never be
+	// exposed, not even to authenticated clients.
+	resp := do(t, http.MethodDelete, gw.URL+"/api/delete", testKey, "")
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
-	if called {
-		t.Error("request reached upstream")
+	if n := calls.Load(); n != 0 {
+		t.Errorf("upstream called %d times", n)
 	}
 }
 
@@ -132,11 +165,7 @@ func TestUpstreamDownReturnsBadGateway(t *testing.T) {
 	upstream.Close()
 	gw := newGateway(t, addr)
 
-	resp, err := http.Post(gw.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{}`))
-	if err != nil {
-		t.Fatalf("POST: %v", err)
-	}
-	resp.Body.Close()
+	resp := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", testKey, `{}`)
 
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
