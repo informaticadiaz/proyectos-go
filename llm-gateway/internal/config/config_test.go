@@ -28,6 +28,9 @@ func TestDefaults(t *testing.T) {
 	if cfg.RatePerMinute != 60 || cfg.RateBurst != 10 {
 		t.Errorf("rate = %d/min burst %d, want 60/min burst 10", cfg.RatePerMinute, cfg.RateBurst)
 	}
+	if cfg.MetricsAddr != "" {
+		t.Errorf("MetricsAddr = %q, want disabled by default", cfg.MetricsAddr)
+	}
 }
 
 func TestOverridesFromEnv(t *testing.T) {
@@ -37,12 +40,13 @@ func TestOverridesFromEnv(t *testing.T) {
 		"GATEWAY_KEYS_FILE":       "keys.txt",
 		"GATEWAY_RATE_PER_MINUTE": "120",
 		"GATEWAY_RATE_BURST":      "5",
+		"GATEWAY_METRICS_ADDR":    "127.0.0.1:9100",
 	}))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if cfg.Addr != ":9000" || cfg.Upstream.Host != "ollama.internal:11434" ||
-		cfg.RatePerMinute != 120 || cfg.RateBurst != 5 {
+		cfg.RatePerMinute != 120 || cfg.RateBurst != 5 || cfg.MetricsAddr != "127.0.0.1:9100" {
 		t.Errorf("cfg = %+v", cfg)
 	}
 }

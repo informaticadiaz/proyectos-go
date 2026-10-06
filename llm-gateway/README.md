@@ -11,7 +11,7 @@ handle on its own.
 | 1 | Reverse proxy for `/v1/*`, SSE streaming, health check, native API blocked | Done |
 | 2 | API key authentication | Done |
 | 3 | Per-client rate limiting (token bucket) | Done |
-| 4 | Structured request logs and metrics (latency, tokens, model) | Planned |
+| 4 | Structured request logs and Prometheus metrics (latency, TTFB, tokens, model) | Done |
 
 ## Run
 
@@ -34,6 +34,7 @@ GATEWAY_KEYS_FILE=keys.txt go run ./cmd/gateway
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama base URL |
 | `GATEWAY_RATE_PER_MINUTE` | `60` | Average requests per minute per client |
 | `GATEWAY_RATE_BURST` | `10` | Requests a client may send at once |
+| `GATEWAY_METRICS_ADDR` | — (disabled) | Listen address for `GET /metrics`, e.g. `127.0.0.1:9100` |
 
 Any OpenAI client works by pointing its base URL at the gateway and using
 the key as its API key:
@@ -67,6 +68,18 @@ curl -N http://127.0.0.1:8090/v1/chat/completions \
   memory behind a mutex, one per configured client.
 - Authentication runs before rate limiting, so requests with a wrong key
   never spend a client's tokens.
+- Logs are JSON on stdout. Each authenticated request produces one
+  `request` entry with client, status, model, `stream`, `duration_ms`,
+  `ttfb_ms` (time to first byte, the latency a user perceives) and token
+  usage. Rejected keys produce a `rejected request` warning.
+- Model and usage are read from the upstream body while the proxy copies
+  it, so observation never buffers a stream. Streamed responses only carry
+  usage when the client sends `"stream_options":{"include_usage":true}`;
+  the gateway does not inject it, since that would alter the stream.
+- Metrics use the Prometheus text format, written without dependencies:
+  `gateway_requests_total`, `gateway_tokens_total` and
+  `gateway_request_duration_seconds`. They are served on a separate
+  listener because their labels reveal client names.
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown that lets in-flight
   streams finish (up to 30 s).
 

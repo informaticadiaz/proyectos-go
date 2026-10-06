@@ -3,6 +3,7 @@ package gateway_test
 import (
 	"bufio"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/auth"
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/gateway"
+	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/observe"
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/ratelimit"
 )
 
@@ -34,7 +36,7 @@ func newLimitedGateway(t *testing.T, upstream string, limiter *ratelimit.Limiter
 	if err != nil {
 		t.Fatalf("ParseKeys: %v", err)
 	}
-	srv := httptest.NewServer(gateway.New(u, keys, limiter))
+	srv := httptest.NewServer(gateway.New(u, keys, limiter, observe.New(slog.New(slog.DiscardHandler))))
 	t.Cleanup(srv.Close)
 	return srv
 }

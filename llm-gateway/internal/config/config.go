@@ -21,6 +21,10 @@ type Config struct {
 	RatePerMinute int
 	// RateBurst is the number of requests a client may send at once.
 	RateBurst int
+	// MetricsAddr is the listen address of the Prometheus metrics endpoint.
+	// Empty disables it. It is kept off the public listener because metrics
+	// reveal client names.
+	MetricsAddr string
 }
 
 // Load reads the configuration through getenv (os.Getenv in production),
@@ -63,6 +67,7 @@ func Load(getenv func(string) string) (Config, error) {
 		KeysFile:      keysFile,
 		RatePerMinute: perMinute,
 		RateBurst:     burst,
+		MetricsAddr:   getenv("GATEWAY_METRICS_ADDR"),
 	}, nil
 }
 

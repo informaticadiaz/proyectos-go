@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -111,6 +112,8 @@ func Middleware(store *Store, next http.Handler) http.Handler {
 		scheme, key, _ := strings.Cut(r.Header.Get("Authorization"), " ")
 		client, ok := store.Lookup(key)
 		if !strings.EqualFold(scheme, "Bearer") || key == "" || !ok {
+			slog.Warn("rejected request", "reason", "invalid api key",
+				"method", r.Method, "path", r.URL.Path, "remote_addr", r.RemoteAddr)
 			unauthorized(w)
 			return
 		}
