@@ -1,0 +1,7 @@
+# Execution data (see AGENTS.md)
+data/
+
+# Build output
+/bin/
+*.test
+*.out
