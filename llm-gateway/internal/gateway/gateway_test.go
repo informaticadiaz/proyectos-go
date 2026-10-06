@@ -13,11 +13,18 @@ import (
 
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/auth"
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/gateway"
+	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/ratelimit"
 )
 
 const testKey = "gw_test"
 
+// newGateway starts a gateway with a limit high enough to stay out of the way.
 func newGateway(t *testing.T, upstream string) *httptest.Server {
+	t.Helper()
+	return newLimitedGateway(t, upstream, ratelimit.New(6000, 100, time.Now))
+}
+
+func newLimitedGateway(t *testing.T, upstream string, limiter *ratelimit.Limiter) *httptest.Server {
 	t.Helper()
 	u, err := url.Parse(upstream)
 	if err != nil {
@@ -27,7 +34,7 @@ func newGateway(t *testing.T, upstream string) *httptest.Server {
 	if err != nil {
 		t.Fatalf("ParseKeys: %v", err)
 	}
-	srv := httptest.NewServer(gateway.New(u, keys))
+	srv := httptest.NewServer(gateway.New(u, keys, limiter))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -169,5 +176,39 @@ func TestUpstreamDownReturnsBadGateway(t *testing.T) {
 
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+}
+
+func TestRateLimitsPerClient(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+	}))
+	t.Cleanup(upstream.Close)
+	gw := newLimitedGateway(t, upstream.URL, ratelimit.New(1, 1, time.Now))
+
+	first := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", testKey, `{}`)
+	second := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", testKey, `{}`)
+
+	if first.StatusCode != http.StatusOK || second.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("statuses = %d, %d; want 200, 429", first.StatusCode, second.StatusCode)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Errorf("upstream called %d times, want 1", n)
+	}
+}
+
+func TestUnauthenticatedRequestsDoNotSpendTokens(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	t.Cleanup(upstream.Close)
+	gw := newLimitedGateway(t, upstream.URL, ratelimit.New(1, 1, time.Now))
+
+	for range 3 {
+		do(t, http.MethodPost, gw.URL+"/v1/chat/completions", "gw_wrong", `{}`)
+	}
+	resp := do(t, http.MethodPost, gw.URL+"/v1/chat/completions", testKey, `{}`)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200: rejected requests consumed the client's tokens", resp.StatusCode)
 	}
 }

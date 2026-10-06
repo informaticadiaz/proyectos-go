@@ -10,7 +10,7 @@ handle on its own.
 | --- | --- | --- |
 | 1 | Reverse proxy for `/v1/*`, SSE streaming, health check, native API blocked | Done |
 | 2 | API key authentication | Done |
-| 3 | Per-key rate limiting | Planned |
+| 3 | Per-client rate limiting (token bucket) | Done |
 | 4 | Structured request logs and metrics (latency, tokens, model) | Planned |
 
 ## Run
@@ -32,6 +32,8 @@ GATEWAY_KEYS_FILE=keys.txt go run ./cmd/gateway
 | `GATEWAY_KEYS_FILE` | — (required) | Keys file, one `name:sha256hex` per line; `#` comments allowed |
 | `GATEWAY_ADDR` | `127.0.0.1:8090` | Listen address |
 | `OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama base URL |
+| `GATEWAY_RATE_PER_MINUTE` | `60` | Average requests per minute per client |
+| `GATEWAY_RATE_BURST` | `10` | Requests a client may send at once |
 
 Any OpenAI client works by pointing its base URL at the gateway and using
 the key as its API key:
@@ -59,6 +61,12 @@ curl -N http://127.0.0.1:8090/v1/chat/completions \
 - The `Authorization` header is removed before forwarding, so client keys
   never reach Ollama. The client name travels in the request context for
   the rate-limiting and logging stages.
+- Each client has a token bucket of `GATEWAY_RATE_BURST` tokens refilled at
+  `GATEWAY_RATE_PER_MINUTE`. An empty bucket returns `429` with
+  `Retry-After` and the OpenAI `rate_limit_exceeded` error. Buckets live in
+  memory behind a mutex, one per configured client.
+- Authentication runs before rate limiting, so requests with a wrong key
+  never spend a client's tokens.
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown that lets in-flight
   streams finish (up to 30 s).
 

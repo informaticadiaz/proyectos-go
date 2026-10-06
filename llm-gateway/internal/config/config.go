@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 )
 
 // Config holds the runtime settings of the gateway.
@@ -16,6 +17,10 @@ type Config struct {
 	// KeysFile is the path of the client API keys file. It is required so
 	// the gateway never starts without authentication.
 	KeysFile string
+	// RatePerMinute is the average number of requests allowed per client.
+	RatePerMinute int
+	// RateBurst is the number of requests a client may send at once.
+	RateBurst int
 }
 
 // Load reads the configuration through getenv (os.Getenv in production),
@@ -43,5 +48,34 @@ func Load(getenv func(string) string) (Config, error) {
 		return Config{}, errors.New("GATEWAY_KEYS_FILE is required")
 	}
 
-	return Config{Addr: addr, Upstream: upstream, KeysFile: keysFile}, nil
+	perMinute, err := positiveInt(getenv, "GATEWAY_RATE_PER_MINUTE", 60)
+	if err != nil {
+		return Config{}, err
+	}
+	burst, err := positiveInt(getenv, "GATEWAY_RATE_BURST", 10)
+	if err != nil {
+		return Config{}, err
+	}
+
+	return Config{
+		Addr:          addr,
+		Upstream:      upstream,
+		KeysFile:      keysFile,
+		RatePerMinute: perMinute,
+		RateBurst:     burst,
+	}, nil
+}
+
+// positiveInt reads name as an integer greater than zero, or returns def
+// when it is unset.
+func positiveInt(getenv func(string) string, name string, def int) (int, error) {
+	raw := getenv(name)
+	if raw == "" {
+		return def, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s: %q must be a positive integer", name, raw)
+	}
+	return n, nil
 }

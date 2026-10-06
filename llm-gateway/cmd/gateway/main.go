@@ -20,6 +20,7 @@ import (
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/auth"
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/config"
 	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/gateway"
+	"github.com/informaticadiaz/proyectos-go/llm-gateway/internal/ratelimit"
 )
 
 func main() {
@@ -62,7 +63,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           gateway.New(cfg.Upstream, keys),
+		Handler:           gateway.New(cfg.Upstream, keys, ratelimit.New(cfg.RatePerMinute, cfg.RateBurst, time.Now)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -71,7 +72,8 @@ func run() error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("gateway listening", "addr", cfg.Addr, "upstream", cfg.Upstream.String(), "clients", keys.Len())
+		slog.Info("gateway listening", "addr", cfg.Addr, "upstream", cfg.Upstream.String(), "clients", keys.Len(),
+			"rate_per_minute", cfg.RatePerMinute, "rate_burst", cfg.RateBurst)
 		errCh <- srv.ListenAndServe()
 	}()
 

@@ -92,6 +92,11 @@ func (s *Store) Lookup(key string) (string, bool) {
 
 type clientKey struct{}
 
+// WithClient returns a copy of ctx carrying the authenticated client name.
+func WithClient(ctx context.Context, client string) context.Context {
+	return context.WithValue(ctx, clientKey{}, client)
+}
+
 // ClientFrom returns the authenticated client name stored by Middleware.
 func ClientFrom(ctx context.Context) (string, bool) {
 	name, ok := ctx.Value(clientKey{}).(string)
@@ -110,7 +115,7 @@ func Middleware(store *Store, next http.Handler) http.Handler {
 			return
 		}
 
-		r = r.WithContext(context.WithValue(r.Context(), clientKey{}, client))
+		r = r.WithContext(WithClient(r.Context(), client))
 		r.Header.Del("Authorization")
 		next.ServeHTTP(w, r)
 	})
