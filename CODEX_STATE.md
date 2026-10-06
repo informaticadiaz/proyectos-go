@@ -35,6 +35,12 @@
   Keys en `~/.config/llm-gateway/` (`0700`/`0600`): `keys.txt` con el
   cliente `ignacio` y su key en `ignacio.key`, fuera del repo. Verificado
   contra Ollama: 401 sin key, 200 con key, métricas y logs en el journal.
+- Scraping (2026-10-06, con autorización del usuario): el Prometheus del
+  servidor (snap 2.37, `:9090`) tiene el job `llm-gateway` sobre
+  `127.0.0.1:8091`; target `up` y series `gateway_*` verificadas. Comando y
+  explicación en `llm-gateway/deploy/prometheus.md`; backup de la config
+  previa en `/var/snap/prometheus/current/prometheus.yml.bak-2026-10-06`.
+  Retención por defecto: 15 días.
 
 ## Decisiones
 
@@ -62,16 +68,14 @@
 
 ## Hilos abiertos
 
-- `llm-gateway`: corre como servicio local; sin exposición pública. Posible
-  integración con el Prometheus existente del servidor (`:9090`).
+- `llm-gateway`: corre como servicio local; sin exposición pública. Sus
+  métricas se guardan en el Prometheus del servidor.
 - En el repo `root` queda sin commit el registro de este workspace
   (`.gitignore`, `AGENTS.md`, `REGISTRO_AGENTES.md`, `CODEX_STATE.md`),
   mezclado con otros cambios pendientes del usuario en esos archivos.
 
 ## Próximos pasos
 
-- Propuesto y pendiente de confirmación (2026-10-05): que el Prometheus del
-  servidor (`:9090`) haga scraping de `127.0.0.1:8091` para conservar el
-  historial de requests y tokens por cliente. Coordinar con `servidor/`
-  antes de tocar su configuración.
+- Opcional: ampliar la retención de Prometheus más allá de 15 días (flags del
+  snap), coordinando con `servidor/`.
 - Alternativas: nuevos clientes del gateway o funciones nuevas.
