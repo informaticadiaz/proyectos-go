@@ -14,6 +14,10 @@
   archivo `GATEWAY_KEYS_FILE` obligatorio con hashes SHA-256 (`name:hex`),
   subcomando `gateway keygen <name>`, header removido antes de Ollama y
   nombre del cliente en el `context`. Probada contra Ollama.
+- `llm-gateway` etapa 3 (2026-10-05): rate limiting por cliente con token
+  bucket propio (sin dependencias), `sync.Mutex`, reloj inyectado, 429 con
+  `Retry-After`; `GATEWAY_RATE_PER_MINUTE` (60) y `GATEWAY_RATE_BURST` (10).
+  Corre después de la autenticación. Probada contra Ollama.
 
 ## Decisiones
 
@@ -26,10 +30,10 @@
 
 ## Hilos abiertos
 
-- `llm-gateway`: etapas 3 (rate limiting por key) y 4 (logs y métricas).
+- `llm-gateway`: etapa 4 (logs y métricas).
   Sin servicio systemd ni exposición pública todavía.
 
 ## Próximos pasos
 
-- `llm-gateway` etapa 3: rate limiting por cliente usando el nombre que
-  deja la etapa 2 en el `context`.
+- `llm-gateway` etapa 4: logs estructurados por request (cliente, modelo,
+  latencia, tokens) y métricas.
