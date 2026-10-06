@@ -44,13 +44,34 @@
 - 2026-10-05: la carpeta completa es un repositorio git propio, público, en
   https://github.com/informaticadiaz/proyectos-go (rama `main`). El repo
   `root` la ignora (`/proyectos-go/` en su `.gitignore`).
+- Forma de trabajo en `llm-gateway`: etapas chicas, TDD (tests primero,
+  verificar rojo, implementar), `go test -race`, prueba de humo contra el
+  Ollama real y documentación (README + este archivo) antes de cada commit.
+  Sin dependencias de terceros salvo decisión explícita.
+- Commits: conventional commits, separando código (`feat`/`ci`) de estado
+  (`docs`); commit y push sólo con aprobación del usuario en cada etapa.
+
+## Notas operativas
+
+- `gh` usa un token fine-grained: un repo nuevo da 403 al hacer push hasta
+  agregarlo al acceso del token.
+- Actualizar el servicio: `llm-gateway/deploy/install.sh`. Logs:
+  `journalctl --user -u llm-gateway -f`.
+- Las pruebas de humo usan puertos `18090`/`18091` y keys temporales en el
+  scratchpad, nunca las keys reales.
 
 ## Hilos abiertos
 
 - `llm-gateway`: corre como servicio local; sin exposición pública. Posible
   integración con el Prometheus existente del servidor (`:9090`).
+- En el repo `root` queda sin commit el registro de este workspace
+  (`.gitignore`, `AGENTS.md`, `REGISTRO_AGENTES.md`, `CODEX_STATE.md`),
+  mezclado con otros cambios pendientes del usuario en esos archivos.
 
 ## Próximos pasos
 
-- `llm-gateway`: decidir siguiente paso (scraping desde Prometheus, nuevos
-  clientes o funciones nuevas).
+- Propuesto y pendiente de confirmación (2026-10-05): que el Prometheus del
+  servidor (`:9090`) haga scraping de `127.0.0.1:8091` para conservar el
+  historial de requests y tokens por cliente. Coordinar con `servidor/`
+  antes de tocar su configuración.
+- Alternativas: nuevos clientes del gateway o funciones nuevas.
