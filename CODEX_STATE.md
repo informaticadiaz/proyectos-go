@@ -24,6 +24,9 @@
   `usage` se lee del body mientras pasa, sin bufferizar streams; en
   streaming sólo existe si el cliente pide `include_usage`. Probada contra
   Ollama. Las cuatro etapas planificadas están completas.
+- CI (2026-10-05): GitHub Actions en `.github/workflows/llm-gateway.yml`
+  (gofmt, `go vet`, `go test -race`) con Go del `go.mod` (1.25) y `stable`,
+  sólo cuando cambia `llm-gateway/`. Badge en el README.
 
 ## Decisiones
 
@@ -40,5 +43,5 @@
 
 ## Próximos pasos
 
-- `llm-gateway`: decidir siguiente paso (CI con GitHub Actions, despliegue
-  como servicio, o nuevas funciones).
+- `llm-gateway`: decidir siguiente paso (despliegue como servicio o nuevas
+  funciones).

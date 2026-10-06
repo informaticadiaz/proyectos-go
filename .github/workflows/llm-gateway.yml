@@ -1,0 +1,61 @@
+name: llm-gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "llm-gateway/**"
+      - ".github/workflows/llm-gateway.yml"
+  pull_request:
+    paths:
+      - "llm-gateway/**"
+      - ".github/workflows/llm-gateway.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: llm-gateway
+
+jobs:
+  test:
+    name: test (go ${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum version declared in go.mod, and the latest release.
+        include:
+          - name: go.mod
+            version-file: llm-gateway/go.mod
+          - name: stable
+            version: stable
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.version }}
+          go-version-file: ${{ matrix.version-file }}
+          # No third-party dependencies, so there is nothing to cache.
+          cache: false
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 ./...

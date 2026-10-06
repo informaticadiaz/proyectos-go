@@ -1,5 +1,7 @@
 # llm-gateway
 
+[![llm-gateway](https://github.com/informaticadiaz/proyectos-go/actions/workflows/llm-gateway.yml/badge.svg)](https://github.com/informaticadiaz/proyectos-go/actions/workflows/llm-gateway.yml)
+
 An HTTP gateway written in Go that sits in front of [Ollama](https://ollama.com)
 and exposes its OpenAI-compatible API, adding the concerns Ollama does not
 handle on its own.
