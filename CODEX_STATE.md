@@ -27,6 +27,14 @@
 - CI (2026-10-05): GitHub Actions en `.github/workflows/llm-gateway.yml`
   (gofmt, `go vet`, `go test -race`) con Go del `go.mod` (1.25) y `stable`,
   sólo cuando cambia `llm-gateway/`. Badge en el README.
+- Despliegue (2026-10-05, con autorización del usuario): servicio systemd de
+  usuario `llm-gateway.service`, habilitado y activo (linger activo). API en
+  `127.0.0.1:8090`, métricas en `127.0.0.1:8091`; sin exposición pública.
+  Binario en `data/llm-gateway/gateway`; unit y script versionados en
+  `llm-gateway/deploy/` (`install.sh` testea, compila, instala y reinicia).
+  Keys en `~/.config/llm-gateway/` (`0700`/`0600`): `keys.txt` con el
+  cliente `ignacio` y su key en `ignacio.key`, fuera del repo. Verificado
+  contra Ollama: 401 sin key, 200 con key, métricas y logs en el journal.
 
 ## Decisiones
 
@@ -39,9 +47,10 @@
 
 ## Hilos abiertos
 
-- `llm-gateway`: sin servicio systemd ni exposición pública todavía.
+- `llm-gateway`: corre como servicio local; sin exposición pública. Posible
+  integración con el Prometheus existente del servidor (`:9090`).
 
 ## Próximos pasos
 
-- `llm-gateway`: decidir siguiente paso (despliegue como servicio o nuevas
-  funciones).
+- `llm-gateway`: decidir siguiente paso (scraping desde Prometheus, nuevos
+  clientes o funciones nuevas).
