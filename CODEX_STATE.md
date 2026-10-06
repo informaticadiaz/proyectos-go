@@ -70,6 +70,14 @@
 
 - `llm-gateway`: corre como servicio local; sin exposición pública. Sus
   métricas se guardan en el Prometheus del servidor.
+- Idea (2026-10-06): asistente de voz "micrófono vivo". Página web en el
+  teléfono vía internet → orquestador en Go → `whisper.cpp` (en
+  `ia-local/voice/`) → `llm-gateway` → Piper `es_AR-daniela-high` (de
+  `generacion-audio-texto/`). Sin GPU la latencia medida es de 15 a 30 s
+  (4.4 tokens/s con el modelo de 7B); para que se sienta en vivo hace falta una
+  GPU (propuesta: RTX 3060 12 GB). Bloqueado por el relevamiento de la fuente
+  en `servidor/mantenimiento/`. Alternativa sin compra: prototipo con un
+  modelo de 1.5B–3B. Exponerlo requiere coordinar con `cloudflare/`.
 - En el repo `root` queda sin commit el registro de este workspace
   (`.gitignore`, `AGENTS.md`, `REGISTRO_AGENTES.md`, `CODEX_STATE.md`),
   mezclado con otros cambios pendientes del usuario en esos archivos.
