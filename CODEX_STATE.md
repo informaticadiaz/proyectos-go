@@ -18,6 +18,12 @@
   bucket propio (sin dependencias), `sync.Mutex`, reloj inyectado, 429 con
   `Retry-After`; `GATEWAY_RATE_PER_MINUTE` (60) y `GATEWAY_RATE_BURST` (10).
   Corre después de la autenticación. Probada contra Ollama.
+- `llm-gateway` etapa 4 (2026-10-05): logs JSON por request (cliente,
+  status, modelo, latencia, TTFB, tokens) y métricas Prometheus sin
+  dependencias en un puerto aparte opcional (`GATEWAY_METRICS_ADDR`). El
+  `usage` se lee del body mientras pasa, sin bufferizar streams; en
+  streaming sólo existe si el cliente pide `include_usage`. Probada contra
+  Ollama. Las cuatro etapas planificadas están completas.
 
 ## Decisiones
 
@@ -30,10 +36,9 @@
 
 ## Hilos abiertos
 
-- `llm-gateway`: etapa 4 (logs y métricas).
-  Sin servicio systemd ni exposición pública todavía.
+- `llm-gateway`: sin servicio systemd ni exposición pública todavía.
 
 ## Próximos pasos
 
-- `llm-gateway` etapa 4: logs estructurados por request (cliente, modelo,
-  latencia, tokens) y métricas.
+- `llm-gateway`: decidir siguiente paso (CI con GitHub Actions, despliegue
+  como servicio, o nuevas funciones).
