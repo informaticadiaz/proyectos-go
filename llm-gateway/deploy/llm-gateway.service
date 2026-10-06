@@ -1,0 +1,20 @@
+[Unit]
+Description=LLM gateway in front of Ollama (OpenAI-compatible API on 127.0.0.1:8090)
+After=network-online.target
+# The gateway refuses to start without keys; skip cleanly instead of looping.
+ConditionPathExists=%h/.config/llm-gateway/keys.txt
+
+[Service]
+Type=simple
+Environment=GATEWAY_ADDR=127.0.0.1:8090
+Environment=GATEWAY_METRICS_ADDR=127.0.0.1:8091
+Environment=GATEWAY_KEYS_FILE=%h/.config/llm-gateway/keys.txt
+Environment=OLLAMA_URL=http://127.0.0.1:11434
+ExecStart=%h/proyectos-go/data/llm-gateway/gateway
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+UMask=0077
+
+[Install]
+WantedBy=default.target

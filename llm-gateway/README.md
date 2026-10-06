@@ -85,6 +85,32 @@ curl -N http://127.0.0.1:8090/v1/chat/completions \
 - `SIGINT`/`SIGTERM` trigger a graceful shutdown that lets in-flight
   streams finish (up to 30 s).
 
+## Deploy
+
+The gateway runs as a systemd user service. `deploy/install.sh` runs the
+tests, builds the binary into `~/proyectos-go/data/llm-gateway/`, installs
+`deploy/llm-gateway.service` and restarts it. Re-run it after every change.
+
+Client keys live outside the repository, in `~/.config/llm-gateway/`
+(directory `0700`, files `0600`). The service does not start until
+`keys.txt` exists:
+
+```sh
+install -d -m 0700 ~/.config/llm-gateway
+go run ./cmd/gateway keygen alice   # copy the "Keys file line" into keys.txt
+chmod 600 ~/.config/llm-gateway/keys.txt
+deploy/install.sh
+```
+
+Adding or revoking a client is an edit to `keys.txt` followed by
+`systemctl --user restart llm-gateway`.
+
+| Item | Value |
+| --- | --- |
+| API | `http://127.0.0.1:8090/v1` |
+| Metrics | `http://127.0.0.1:8091/metrics` |
+| Logs | `journalctl --user -u llm-gateway` |
+
 ## Test
 
 ```sh
