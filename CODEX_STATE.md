@@ -5,7 +5,11 @@
 - Workspace creado el 2026-10-05 a pedido del usuario para proyectos en Go.
 - Toolchain disponible: Go 1.26.0 (linux/amd64), `GOPATH` en
   `/home/ignacio/go`.
-- Todavía no hay proyectos.
+- Primer proyecto: [`llm-gateway/`](llm-gateway/README.md), gateway HTTP en
+  Go delante de Ollama con API compatible con OpenAI, elegido el 2026-10-05
+  como pieza de portafolio. Etapa 1 (proxy `/v1/*`, streaming SSE,
+  `/healthz`, `/api/*` bloqueado, apagado ordenado) hecha con tests y
+  probada contra el Ollama local (0.31.1, `qwen2.5-coder:7b`).
 
 ## Decisiones
 
@@ -18,8 +22,9 @@
 
 ## Hilos abiertos
 
-- Definir el primer proyecto (tipo: CLI, API web, bot u otro).
+- `llm-gateway`: etapas 2 (API keys), 3 (rate limiting por key) y 4 (logs
+  y métricas). Sin servicio systemd ni exposición pública todavía.
 
 ## Próximos pasos
 
-- Elegir el primer proyecto y crear su módulo con `go mod init`.
+- `llm-gateway` etapa 2: autenticación con API keys como middleware.
