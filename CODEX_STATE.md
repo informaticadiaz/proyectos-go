@@ -63,6 +63,28 @@
   ~2,3 s, chat 4–7 s, síntesis 1,5–2,6 s. Transcripciones correctas en
   WAV, WebM/Opus y Ogg/Opus. El silencio producía `[MÚSICA]`; ahora se
   filtran esas etiquetas y responde 422.
+- `voice-assistant` etapa 2 (2026-10-09): página push-to-talk servida por
+  el orquestador en `GET /` desde archivos embebidos (`embed`, paquete
+  `internal/web`), HTML/CSS/JS sin build ni CDN, mobile-first, interfaz en
+  español. Botón grande para mantener presionado (pointer y barra
+  espaciadora), estados listo/grabando/procesando/respondiendo/error,
+  pulsaciones < 300 ms ignoradas, registro de la conversación con tiempos
+  por etapa, avisos de permiso denegado y de contexto no seguro. Cabeceras
+  de seguridad testeadas (CSP sólo `self` + `blob:` para audio,
+  `Permissions-Policy: microphone=(self)`, `nosniff`, `no-referrer`,
+  `DENY`); rutas desconocidas dan 404 y `/v1/turn`/`/healthz` no cambian.
+  Formato: el decodificador lee las cajas MP4 y, sólo si `moov` viene
+  después de `mdat` (MP4 no fragmentado, posible en Safari), pasa el audio
+  por un archivo temporal `0600` que se borra al terminar; por pipe ese
+  caso daba 0 bytes (probado con un M4A de 60 s). Chromium graba
+  WebM/Opus y, si se pide `audio/mp4`, MP4 fragmentado, que va por pipe.
+  Prueba de punta a punta con el Chromium headless compartido de
+  `playwright/` y micrófono falso (clip SLR61), con gateway temporal, key
+  descartable, `whisper-server` y el servidor HTTP real de Piper en
+  puertos `1809x`: transcripción correcta en todos los turnos, audio de
+  respuesta reproducido; primer turno 21,4 s (LLM en frío), siguientes
+  7,3–11,5 s. Todo apagado al terminar; el gateway de producción (8090) no
+  se tocó. Sin commit todavía.
 
 ## Decisiones
 
@@ -115,9 +137,12 @@
 
 ## Próximos pasos
 
-- `voice-assistant` etapa 2: página web push-to-talk (`MediaRecorder` →
-  `/v1/turn` → reproducción). Etapa 3: streaming por oración LLM → TTS.
-  Etapa 4: micrófono abierto con VAD.
+- `voice-assistant`: revisar y commitear la etapa 2 (con aprobación).
+- `voice-assistant`: decidir la exposición con HTTPS para usarlo desde el
+  teléfono (el micrófono exige contexto seguro), coordinando con
+  `cloudflare/`; no está autorizada. Probar Safari en un iPhone real.
+- `voice-assistant` etapa 3: streaming por oración LLM → TTS. Etapa 4:
+  micrófono abierto con VAD. Candidato: historial de conversación.
 
 - Opcional: ampliar la retención de Prometheus más allá de 15 días (flags del
   snap), coordinando con `servidor/`.
