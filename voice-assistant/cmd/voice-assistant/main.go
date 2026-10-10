@@ -1,6 +1,7 @@
 // Command voice-assistant runs the push-to-talk voice assistant
 // orchestrator: POST /v1/turn takes recorded speech and answers with spoken
-// audio, chaining ffmpeg, whisper.cpp, the llm-gateway and Piper.
+// audio, chaining ffmpeg, whisper.cpp, the llm-gateway and Piper. GET /
+// serves the push-to-talk web page.
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"github.com/informaticadiaz/proyectos-go/voice-assistant/internal/config"
 	"github.com/informaticadiaz/proyectos-go/voice-assistant/internal/piper"
 	"github.com/informaticadiaz/proyectos-go/voice-assistant/internal/turn"
+	"github.com/informaticadiaz/proyectos-go/voice-assistant/internal/web"
 	"github.com/informaticadiaz/proyectos-go/voice-assistant/internal/whisper"
 )
 
@@ -51,7 +53,7 @@ func run() error {
 	}
 	srv := &http.Server{
 		Addr: cfg.Addr,
-		Handler: turn.New(stages, turn.Options{
+		Handler: newHandler(stages, turn.Options{
 			MaxUploadBytes: cfg.MaxUploadBytes,
 			TurnTimeout:    cfg.TurnTimeout,
 			Logger:         slog.Default(),
@@ -86,6 +88,17 @@ func run() error {
 		return runErr
 	}
 	return nil
+}
+
+// newHandler routes the turn API and health check to the turn handler and
+// everything else to the web page, which answers 404 for unknown paths.
+func newHandler(stages turn.Stages, opts turn.Options) http.Handler {
+	api := turn.New(stages, opts)
+	mux := http.NewServeMux()
+	mux.Handle("/v1/turn", api)
+	mux.Handle("/healthz", api)
+	mux.Handle("/", web.Handler())
+	return mux
 }
 
 // readKey loads the gateway API key from a file so it never sits in the

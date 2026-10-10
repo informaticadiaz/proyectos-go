@@ -11,13 +11,15 @@ as spoken audio, using only services that run on this machine.
 | Stage | Feature | State |
 | --- | --- | --- |
 | 1 | `POST /v1/turn`: decode, transcribe, chat, synthesize; timings in headers and logs | Done |
-| 2 | Web push-to-talk page (browser `MediaRecorder` → `/v1/turn` → playback) | Planned |
+| 2 | Web push-to-talk page (browser `MediaRecorder` → `/v1/turn` → playback) | Done |
 | 3 | Sentence-level streaming: speak the first LLM sentence while the rest is generated | Planned |
 | 4 | Open microphone with voice activity detection (no button) | Planned |
 
 ## Architecture
 
 ```text
+browser ──GET /──▶ push-to-talk page (embedded HTML/CSS/JS)
+
 client ──POST /v1/turn (webm/ogg/wav/mp3…)──▶ voice-assistant
                                                 │
    1. decode      ffmpeg (stdin → stdout)       │  any format → 16 kHz mono s16 WAV
@@ -31,6 +33,8 @@ client ◀──200 audio/wav + X-Transcript, X-Reply, X-Timing-*──┘
 - `internal/turn` owns the pipeline. Each stage is a one-method interface
   (`Decoder`, `Transcriber`, `Chatter`, `Synthesizer`); the HTTP handler
   composes them and maps failures to status codes.
+- `internal/web` serves the page from files embedded with `embed`; the
+  binary has no other runtime assets.
 - `internal/audio`, `internal/whisper`, `internal/chat` and
   `internal/piper` are the adapters. Whisper and Piper run as resident
   servers so their models are loaded once, not on every turn.
@@ -72,6 +76,66 @@ timings, transcript and reply; failures add `stage` and `err`.
 
 `GET /healthz` returns `200 ok`. It does not probe the upstream servers.
 
+`GET /` serves the push-to-talk page, and `/app.js`, `/style.css` and
+`/icon.svg` its assets (`Cache-Control: no-cache`). Any other path is
+`404`. Page responses carry security headers for a same-origin page:
+
+| Header | Value |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self' blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` |
+| `Permissions-Policy` | `microphone=(self), camera=(), geolocation=()` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `no-referrer` |
+| `X-Frame-Options` | `DENY` |
+
+The CSP forbids inline scripts and styles, so the page keeps all code in
+its own files. `/v1/turn` and `/healthz` responses are unchanged.
+
+## Web page
+
+Open `http://127.0.0.1:8095/` in a browser on this machine. Hold the round
+button (or the space bar when it has focus or nothing else does), speak,
+and release: the page posts the recording to `/v1/turn`, plays the spoken
+reply and adds the question and the answer to the conversation, with the
+per-stage timings in small print. The page is in Spanish and mobile-first.
+
+- States: ready, recording (red, pulsing), processing (spinner, button
+  disabled), playing (green; pressing again interrupts the reply and
+  records) and error (message above the button).
+- Touch and mouse use `pointerdown` to start and `pointerup`,
+  `pointercancel` or `pointerleave` to stop; the button sets
+  `touch-action: none` and suppresses the long-press menu. Presses shorter
+  than 300 ms are ignored without contacting the server. A recording stops
+  by itself after 60 s.
+- The microphone is opened on the first press and released after 20 s
+  without use, or when the tab is hidden, so the browser's recording
+  indicator does not stay on.
+- Recording format: the first of `audio/webm;codecs=opus`,
+  `audio/ogg;codecs=opus`, `audio/webm`, `audio/mp4;codecs=mp4a.40.2`,
+  `audio/mp4` that `MediaRecorder.isTypeSupported` accepts. Chromium and
+  Firefox record WebM/Opus; Safari has recorded MP4 (see the decoder
+  note below).
+- The reply is played through an `<audio>` element that stays visible for
+  replay. iOS only lets an element play outside a user gesture once it
+  has played during one, so the first press plays 50 ms of generated
+  silence; if the browser still blocks playback, the page asks for a tap
+  on ▶.
+- Each turn is independent: the model gets no conversation history.
+  Sending recent turns as context is a candidate for a later stage.
+
+### Secure context
+
+Browsers expose the microphone only to secure contexts: HTTPS, or
+`http://localhost` / `http://127.0.0.1`. Opened over plain HTTP from
+another machine the page shows a warning and disables the button. Using
+it from a phone therefore needs HTTPS in front of the orchestrator. Public
+exposure (for example through Cloudflare Tunnel) is a separate step that
+is not authorised yet and must be coordinated with the `cloudflare/`
+workspace; the orchestrator itself binds to `127.0.0.1` only.
+
+If the microphone permission is denied, the page says so and explains how
+to re-enable it in the site settings.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -108,7 +172,8 @@ LD_LIBRARY_PATH=$W/build/bin $W/build/bin/whisper-server \
   -m ~/generacion-audio-texto/data/models/piper/es_AR-daniela-high.onnx
 ```
 
-Then the orchestrator and a turn:
+Then the orchestrator, and open `http://127.0.0.1:8095/`, or post a turn
+with curl:
 
 ```sh
 VOICE_GATEWAY_KEY_FILE=~/.config/voice-assistant/gateway.key go run ./cmd/voice-assistant
@@ -122,11 +187,19 @@ to `VOICE_TURN_TIMEOUT` + 5 s).
 
 ## Design notes
 
-- ffmpeg reads stdin and writes raw PCM to stdout, so no temporary files
-  are created. The orchestrator writes the WAV header itself, because
-  ffmpeg cannot fill in the sizes when its output is a pipe. Reading from
-  a pipe also means ffmpeg cannot seek: WebM, Ogg, WAV, MP3 and fragmented
-  MP4 work, a non-fragmented MP4/M4A with its index at the end does not.
+- ffmpeg reads stdin and writes raw PCM to stdout. The orchestrator
+  writes the WAV header itself, because ffmpeg cannot fill in the sizes
+  when its output is a pipe. Reading from a pipe also means ffmpeg cannot
+  seek: WebM, Ogg, WAV, MP3 and fragmented MP4 decode from the pipe, but a
+  non-fragmented MP4/M4A whose index (`moov`) comes after the samples
+  (`mdat`) decodes to nothing once it outgrows ffmpeg's read buffer (a
+  60 s AAC file gives 0 bytes, "partial file"). The decoder reads the
+  top-level MP4 box headers and, only in that case, writes the upload to a
+  private temporary file (`0600`, in `$TMPDIR`, removed after the call)
+  so ffmpeg can seek. Safari's recorder may produce either layout; both
+  are covered. Chromium's `audio/mp4` recordings are fragmented
+  (`ftyp moov moof mdat`) and use the pipe; that path was verified end to
+  end. Safari itself has not been tested on a device yet.
 - A non-zero ffmpeg exit is a client error (`400`); a missing binary or a
   cancelled turn is not.
 - whisper.cpp's API is `POST /inference` (multipart: `file`,
@@ -168,6 +241,36 @@ the LLM. Every transcript matched the reference sentence (for example
 "Hace 17 grados y está nublado."). Sentence-level streaming (stage 3) is
 the main lever left on CPU.
 
+### Web page, end to end
+
+Measured on 2026-10-09 by driving the page with headless Chromium
+(Playwright) and a fake microphone fed with a 5.5 s SLR61 clip ("Hace
+trece grados con sol"), mobile viewport 390×844, against the same
+services. Every transcript was "Hace 13 grados con sol." and every reply
+loaded and started playing in the `<audio>` element. The recording
+arrived as `audio/webm;codecs=opus`.
+
+| Turn | Input | Decode | Transcribe | Chat | Synthesize | Total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 (cold LLM) | button | 44 ms | 2289 ms | 17642 ms | 1396 ms | 21.4 s |
+| 2 | space bar | 43 ms | 2334 ms | 3572 ms | 1391 ms | 7.3 s |
+| 3 | button, dark mode | 44 ms | 2326 ms | 4146 ms | 1580 ms | 8.1 s |
+| 4 | button | 43 ms | 2330 ms | 6486 ms | 2669 ms | 11.5 s |
+| 5 | space bar | 43 ms | 2364 ms | 6608 ms | 2495 ms | 11.5 s |
+| 6 | button, dark mode | 44 ms | 2343 ms | 4684 ms | 1853 ms | 8.9 s |
+
+From releasing the button to the reply starting to play took the server
+total plus about 40 ms. The chat stage dominates and varies with the
+length of the reply (3.7 to 10.7 s of speech in these runs). A
+browser-made `audio/mp4` recording (Chromium, fragmented) also completed a
+turn with the right transcript.
+
+The same run checked that a press shorter than 300 ms sends nothing, that
+a denied microphone shows the permission message, that plain HTTP on a
+non-localhost name shows the secure-context warning with the button
+disabled, and that the browser console stayed free of CSP or script
+errors.
+
 ## Test
 
 ```sh
@@ -175,5 +278,12 @@ go test -race ./...
 ```
 
 Unit tests fake every stage and use `httptest` servers for the whisper,
-gateway and Piper clients. ffmpeg is faked with a shell script; two tests
-use the real ffmpeg and skip when it is not installed.
+gateway and Piper clients. ffmpeg is faked with a shell script; three
+tests use the real ffmpeg (including a 60 s non-fragmented M4A that only
+decodes through the temporary file) and skip when it is not installed.
+`internal/web` checks content types, the embedded bytes, 404/405, and the
+security headers; `cmd/voice-assistant` checks the combined routing.
+
+The browser test above is manual: it uses the machine's shared Playwright
+install (see the `playwright/` workspace), not a dependency of this
+module.

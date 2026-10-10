@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)">
+<title>Asistente de voz</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<div class="app" data-state="idle">
+  <header class="top">
+    <h1>Asistente de voz</h1>
+    <p class="subtitle">Local, en español</p>
+  </header>
+
+  <main class="log" id="log" aria-label="Conversación" aria-live="polite">
+    <p class="empty" id="empty">Las preguntas y respuestas aparecen aquí.</p>
+  </main>
+
+  <footer class="controls">
+    <p class="notice" id="notice" role="alert" hidden></p>
+    <p class="status" id="status" aria-live="polite">Listo para escuchar</p>
+    <button type="button" class="talk" id="talk"
+            aria-label="Hablar: mantener presionado y soltar al terminar"
+            aria-describedby="hint">
+      <svg class="talk-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/>
+      </svg>
+      <span class="spinner" aria-hidden="true"></span>
+    </button>
+    <p class="hint" id="hint">Mantener presionado para hablar<span class="kbd-hint"> (o la barra espaciadora)</span></p>
+    <audio id="player" class="player" controls preload="auto" hidden></audio>
+  </footer>
+</div>
+</body>
+</html>

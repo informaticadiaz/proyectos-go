@@ -1,0 +1,312 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1b1e23;
+  --muted: #5a6270;
+  --border: #dde1e7;
+  --accent: #1f5fd1;
+  --accent-text: #ffffff;
+  --record: #c62828;
+  --busy: #6b7380;
+  --play: #1b7a43;
+  --user-bg: #e7eefc;
+  --error-bg: #fdecec;
+  --error-text: #8f1d1d;
+  --focus: #f0a400;
+  --radius: 14px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1f2228;
+    --text: #e9ebef;
+    --muted: #a3abb8;
+    --border: #343943;
+    --accent: #5b8ff0;
+    --accent-text: #0d1220;
+    --record: #ef5350;
+    --busy: #5f6774;
+    --play: #2f8f57;
+    --user-bg: #22314d;
+    --error-bg: #3a1d1f;
+    --error-text: #ffb4b4;
+    --focus: #ffc94d;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.top {
+  padding: calc(12px + env(safe-area-inset-top)) 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.top h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 650;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Conversation log */
+
+.log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overscroll-behavior: contain;
+}
+
+.empty {
+  margin: auto 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bubble {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  max-width: 88%;
+  overflow-wrap: anywhere;
+}
+
+.bubble .who {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: var(--user-bg);
+  border-bottom-right-radius: 4px;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.timings {
+  margin: 0;
+  align-self: flex-start;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Controls */
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.status {
+  margin: 0;
+  min-height: 1.45em;
+  font-weight: 600;
+  text-align: center;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.notice {
+  margin: 0;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--error-bg);
+  color: var(--error-text);
+  font-size: 0.95rem;
+}
+
+.notice[hidden],
+.player[hidden] {
+  display: none;
+}
+
+.player {
+  width: 100%;
+  height: 40px;
+}
+
+.talk {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  transition: transform 120ms ease, background-color 120ms ease;
+}
+
+.talk:focus-visible {
+  outline: 4px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.talk:disabled {
+  cursor: not-allowed;
+  background: var(--busy);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+[data-state="unavailable"] .hint {
+  display: none;
+}
+
+/* The space-bar tip only matters with a keyboard and a fine pointer. */
+@media (hover: none), (pointer: coarse) {
+  .kbd-hint {
+    display: none;
+  }
+}
+
+.talk-icon {
+  width: 48px;
+  height: 48px;
+  fill: currentColor;
+}
+
+.spinner {
+  display: none;
+  width: 44px;
+  height: 44px;
+  border: 5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+[data-state="recording"] .talk {
+  background: var(--record);
+  color: #ffffff;
+  transform: scale(1.08);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+[data-state="processing"] .talk {
+  background: var(--busy);
+  color: #ffffff;
+}
+
+[data-state="processing"] .talk-icon {
+  display: none;
+}
+
+[data-state="processing"] .spinner {
+  display: block;
+}
+
+[data-state="playing"] .talk {
+  background: var(--play);
+  color: #ffffff;
+}
+
+[data-state="recording"] .status {
+  color: var(--record);
+}
+
+[data-state="error"] .status,
+[data-state="unavailable"] .status {
+  color: var(--error-text);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(198 40 40 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 18px rgb(198 40 40 / 0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talk,
+  [data-state="recording"] .talk,
+  .spinner {
+    animation: none;
+    transition: none;
+  }
+  [data-state="recording"] .talk {
+    outline: 6px solid var(--record);
+    outline-offset: 4px;
+  }
+}
