@@ -103,12 +103,12 @@
   (propuesta: RTX 3060 12 GB) sigue bloqueada por el relevamiento de la
   fuente en `servidor/mantenimiento/`. Exponerlo requiere coordinar con
   `cloudflare/`.
-- `voice-assistant`: pendiente instalar Flask en el venv de
-  `generacion-audio-texto/` (`piper-tts[http]`) para usar
-  `piper.http_server`; la prueba de humo usó un servidor equivalente de
-  biblioteca estándar en el scratchpad. `whisper-server` necesita
+- `voice-assistant`: el 2026-10-09, con autorización del usuario, se
+  instaló `piper-tts[http]==1.6.0` (Flask 3.1.3) en el venv de
+  `generacion-audio-texto/`; `piper.http_server` real verificado
+  (`POST /synthesize` → WAV válido en ~0,3 s). `whisper-server` necesita
   `LD_LIBRARY_PATH=build/bin`. La voz satura a 0 dB (picos 32767) y el
-  servidor de Piper no expone `volume`. Sin commit todavía.
+  servidor de Piper no expone `volume`. Etapa 1 commiteada y pusheada.
 - En el repo `root` queda sin commit el registro de este workspace
   (`.gitignore`, `AGENTS.md`, `REGISTRO_AGENTES.md`, `CODEX_STATE.md`),
   mezclado con otros cambios pendientes del usuario en esos archivos.

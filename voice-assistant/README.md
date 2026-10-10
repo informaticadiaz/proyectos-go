@@ -102,7 +102,7 @@ LD_LIBRARY_PATH=$W/build/bin $W/build/bin/whisper-server \
 #    Create a key for this client and store it in a 0600 file:
 #    go run ../llm-gateway/cmd/gateway keygen voice-assistant
 
-# 3. Piper HTTP server (needs Flask: pip install 'piper-tts[http]')
+# 3. Piper HTTP server (requires the http extra: pip install 'piper-tts[http]')
 ~/generacion-audio-texto/.venv/bin/python -m piper.http_server \
   --host 127.0.0.1 --port 8093 \
   -m ~/generacion-audio-texto/data/models/piper/es_AR-daniela-high.onnx
