@@ -159,3 +159,134 @@ func TestRealFFmpegRejectsGarbage(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUndecodable", err)
 	}
 }
+
+// box builds one ISO-BMFF box: 32-bit size, 4-byte type, payload.
+func box(kind, payload string) string {
+	var b bytes.Buffer
+	binary.Write(&b, binary.BigEndian, uint32(8+len(payload)))
+	b.WriteString(kind)
+	b.WriteString(payload)
+	return b.String()
+}
+
+// inputFromFileOnly fails when asked to read stdin and echoes the named
+// input file as the "PCM", so a test can tell how the input was passed.
+const inputFromFileOnly = `
+in=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-i" ]; then in="$2"; fi
+  shift
+done
+if [ "$in" = "pipe:0" ]; then echo "input came through the pipe" >&2; exit 9; fi
+exec cat "$in"`
+
+func emptyDir(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("temporary files left behind: %v", entries)
+	}
+}
+
+func TestDecodeMP4WithIndexAtEndUsesTempFile(t *testing.T) {
+	// moov after mdat: ffmpeg would need to seek back, which a pipe cannot.
+	input := []byte(box("ftyp", "M4A isom") + box("mdat", "audio-samples") + box("moov", "index"))
+	dir := t.TempDir()
+	dec := audio.NewFFmpeg(fakeFFmpeg(t, inputFromFileOnly))
+	dec.TempDir = dir
+
+	wav, err := dec.Decode(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	checkHeader(t, wav)
+	if !bytes.Equal(wav[44:], input) {
+		t.Errorf("ffmpeg read %q, want the uploaded bytes", wav[44:])
+	}
+	emptyDir(t, dir)
+}
+
+func TestDecodeRemovesTempFileOnFailure(t *testing.T) {
+	input := []byte(box("ftyp", "M4A ") + box("mdat", "x") + box("moov", "y"))
+	dir := t.TempDir()
+	dec := audio.NewFFmpeg(fakeFFmpeg(t, `echo "moov atom not found" >&2; exit 1`))
+	dec.TempDir = dir
+
+	if _, err := dec.Decode(context.Background(), input); !errors.Is(err, turn.ErrUndecodable) {
+		t.Fatalf("err = %v, want ErrUndecodable", err)
+	}
+	emptyDir(t, dir)
+}
+
+func TestDecodeStreamableMP4UsesPipe(t *testing.T) {
+	pipeOnly := `
+case "$*" in
+  *"-i pipe:0"*) exec cat ;;
+  *) echo "unexpected args: $*" >&2; exit 2 ;;
+esac`
+	for name, input := range map[string]string{
+		"index first":        box("ftyp", "isom") + box("moov", "index") + box("mdat", "samples"),
+		"fragmented":         box("ftyp", "iso5") + box("moov", "mvex") + box("moof", "f") + box("mdat", "s"),
+		"truncated box":      box("ftyp", "isom") + "\x00\x00\xff\xffmdat",
+		"not mp4":            "OggS-not-an-mp4-at-all",
+		"bad size":           "\x00\x00\x00\x02ftypxxxxxxxx",
+		"huge 64-bit size":   box("ftyp", "isom") + "\x00\x00\x00\x01mdat\xff\xff\xff\xff\xff\xff\xff\xff",
+		"size zero to end":   box("ftyp", "isom") + "\x00\x00\x00\x00mdat rest of file",
+		"moov before mdat64": box("ftyp", "isom") + box("moov", "i") + "\x00\x00\x00\x01mdat\x00\x00\x00\x00\x00\x00\x00\x11s",
+	} {
+		t.Run(name, func(t *testing.T) {
+			wav, err := audio.NewFFmpeg(fakeFFmpeg(t, pipeOnly)).Decode(context.Background(), []byte(input))
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			if string(wav[44:]) != input {
+				t.Errorf("PCM = %q", wav[44:])
+			}
+		})
+	}
+}
+
+func TestDecodeMP4WithLargeMdatBeforeMoovUsesTempFile(t *testing.T) {
+	// A 64-bit mdat size, as large recordings use, still counts as index at end.
+	mdat := "\x00\x00\x00\x01mdat\x00\x00\x00\x00\x00\x00\x00\x14samp"
+	input := []byte(box("ftyp", "M4A ") + mdat + box("moov", "index"))
+	dec := audio.NewFFmpeg(fakeFFmpeg(t, inputFromFileOnly))
+	dec.TempDir = t.TempDir()
+	if _, err := dec.Decode(context.Background(), input); err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+}
+
+func TestRealFFmpegDecodesMP4WithIndexAtEnd(t *testing.T) {
+	bin := realFFmpeg(t)
+	// 60 s of AAC in a plain (non-fragmented) MP4, moov written last, as a
+	// recorder that finalises the file does. Through a pipe this decodes
+	// to nothing; it must go through a seekable file.
+	src := filepath.Join(t.TempDir(), "speech.m4a")
+	gen := exec.Command(bin, "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=60",
+		"-c:a", "aac", "-b:a", "128k", src)
+	if out, err := gen.CombinedOutput(); err != nil {
+		t.Skipf("ffmpeg cannot encode AAC here: %v: %s", err, out)
+	}
+	input, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	dec := audio.NewFFmpeg(bin)
+	dec.TempDir = dir
+	wav, err := dec.Decode(context.Background(), input)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+	checkHeader(t, wav)
+	if seconds := float64(len(wav)-44) / 32000; seconds < 59 || seconds > 61 {
+		t.Errorf("decoded %.2f s, want about 60 s", seconds)
+	}
+	emptyDir(t, dir)
+}
